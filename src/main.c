@@ -8,9 +8,87 @@
 
 /* --- _ingest mode: read stdin, send to daemon via IPC --- */
 
-static int
-do_ingest(void)
+/* Detect the best MIME type from the current clipboard/primary selection.
+ * Runs `wl-paste [--primary] --list-types` and picks the first offered type. */
+static char *
+detect_mime_type(const char *selection)
 {
+    GError *err = NULL;
+    GSubprocess *proc;
+    gboolean is_primary = selection && g_str_equal(selection, "primary");
+
+    if (is_primary) {
+        proc = g_subprocess_new(
+            G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE,
+            &err,
+            "wl-paste", "--primary", "--list-types", NULL);
+    } else {
+        proc = g_subprocess_new(
+            G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE,
+            &err,
+            "wl-paste", "--list-types", NULL);
+    }
+
+    if (!proc) {
+        g_clear_error(&err);
+        return g_strdup("text/plain");
+    }
+
+    char *stdout_buf = NULL;
+    if (!g_subprocess_communicate_utf8(proc, NULL, NULL, &stdout_buf, NULL, &err)) {
+        g_clear_error(&err);
+        g_object_unref(proc);
+        return g_strdup("text/plain");
+    }
+    g_object_unref(proc);
+
+    if (!stdout_buf || !*stdout_buf) {
+        g_free(stdout_buf);
+        return g_strdup("text/plain");
+    }
+
+    /* Pick the best MIME: prefer text/plain, text/html, image/png, else first line */
+    g_auto(GStrv) types = g_strsplit(stdout_buf, "\n", -1);
+    g_free(stdout_buf);
+
+    /* Preference order for selection */
+    const char *preferred[] = {
+        "text/plain;charset=utf-8",
+        "text/plain",
+        "UTF8_STRING",
+        "STRING",
+        "TEXT",
+        "text/html",
+        "image/png",
+        "image/jpeg",
+        "image/bmp",
+        NULL
+    };
+
+    for (int p = 0; preferred[p]; p++) {
+        for (int i = 0; types[i]; i++) {
+            g_strstrip(types[i]);
+            if (g_ascii_strcasecmp(types[i], preferred[p]) == 0)
+                return g_strdup(preferred[p]);
+        }
+    }
+
+    /* Fallback: first non-empty type */
+    for (int i = 0; types[i]; i++) {
+        g_strstrip(types[i]);
+        if (*types[i])
+            return g_strdup(types[i]);
+    }
+
+    return g_strdup("text/plain");
+}
+
+static int
+do_ingest(int argc, char **argv)
+{
+    /* argv[2] is the selection type: "clipboard" or "primary" */
+    const char *selection = (argc > 2) ? argv[2] : "clipboard";
+
     /* Read all of stdin */
     GString *buf = g_string_new(NULL);
     char tmp[4096];
@@ -24,22 +102,47 @@ do_ingest(void)
         return 0;
     }
 
-    /* Trim trailing newline (wl-paste adds one) */
-    if (buf->len > 0 && buf->str[buf->len - 1] == '\n')
-        g_string_truncate(buf, buf->len - 1);
+    /* For text types, trim trailing newline (wl-paste adds one) */
+    g_autofree char *mime = detect_mime_type(selection);
+
+    if (g_str_has_prefix(mime, "text/") ||
+        g_str_equal(mime, "UTF8_STRING") ||
+        g_str_equal(mime, "STRING") ||
+        g_str_equal(mime, "TEXT")) {
+        if (buf->len > 0 && buf->str[buf->len - 1] == '\n')
+            g_string_truncate(buf, buf->len - 1);
+    }
 
     if (buf->len == 0) {
         g_string_free(buf, TRUE);
         return 0;
     }
 
+    /* Normalize X11 selection types to standard MIME */
+    const char *real_mime = mime;
+    if (g_str_equal(mime, "UTF8_STRING") ||
+        g_str_equal(mime, "STRING") ||
+        g_str_equal(mime, "TEXT")) {
+        real_mime = "text/plain";
+    }
+
     /* Base64 encode */
     g_autofree char *b64 = g_base64_encode((const guchar *)buf->str, buf->len);
     g_string_free(buf, TRUE);
 
+    /* Escape MIME for JSON (in practice MIME types don't need escaping, but be safe) */
+    GString *mime_escaped = g_string_new(NULL);
+    for (const char *p = real_mime; *p; p++) {
+        if (*p == '"' || *p == '\\')
+            g_string_append_c(mime_escaped, '\\');
+        g_string_append_c(mime_escaped, *p);
+    }
+
     /* Build JSON command */
     g_autofree char *cmd = g_strdup_printf(
-        "{\"cmd\":\"ingest\",\"content\":\"%s\",\"mime\":\"text/plain\"}", b64);
+        "{\"cmd\":\"ingest\",\"content\":\"%s\",\"mime\":\"%s\"}",
+        b64, mime_escaped->str);
+    g_string_free(mime_escaped, TRUE);
 
     /* Send to daemon */
     g_autofree char *sock = clipium_socket_path();
@@ -173,7 +276,7 @@ main(int argc, char **argv)
             return 0;
         }
         if (g_str_equal(argv[1], "_ingest"))
-            return do_ingest();
+            return do_ingest(argc, argv);
         if (g_str_equal(argv[1], "show"))
             return do_show();
         if (g_str_equal(argv[1], "list"))
