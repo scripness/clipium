@@ -1,5 +1,6 @@
 #include "clipium-ipc.h"
 #include "clipium-config.h"
+#include <glib/gstdio.h>
 #include <string.h>
 /* Minimal hand-rolled JSON to avoid json-glib dependency */
 

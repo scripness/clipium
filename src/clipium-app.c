@@ -55,8 +55,8 @@ action_quit(GSimpleAction *action, GVariant *parameter, gpointer user_data)
 }
 
 static const GActionEntry app_actions[] = {
-    { "show", action_show, NULL, NULL, NULL },
-    { "quit", action_quit, NULL, NULL, NULL },
+    { "show", action_show, NULL, NULL, NULL, {0} },
+    { "quit", action_quit, NULL, NULL, NULL, {0} },
 };
 
 /* --- Application signals --- */

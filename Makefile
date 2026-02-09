@@ -11,7 +11,7 @@ PREFIX = $(HOME)/.local
 BINDIR = $(PREFIX)/bin
 AUTOSTART_DIR = $(HOME)/.config/autostart
 
-.PHONY: build clean install uninstall keybinding debug
+.PHONY: build clean install uninstall keybinding debug test
 
 build: $(BINARY)
 
@@ -22,8 +22,18 @@ debug: CFLAGS = -g -O0 -Wall -Wextra -Wno-unused-parameter -DDEBUG
 debug: CFLAGS += $(shell $(PKG_CONFIG) --cflags $(PKGS))
 debug: clean $(BINARY)
 
+TEST_SRCS = tests/test-clipium.c src/clipium-store.c src/clipium-fuzzy.c src/clipium-db.c
+TEST_BINARY = tests/test-clipium
+
+test: $(TEST_BINARY)
+	./$(TEST_BINARY) --tap
+
+$(TEST_BINARY): $(TEST_SRCS) src/*.h
+	@mkdir -p tests
+	$(CC) $(CFLAGS) -Isrc $(TEST_SRCS) -o $(TEST_BINARY) $(LDFLAGS)
+
 clean:
-	rm -f $(BINARY)
+	rm -f $(BINARY) $(TEST_BINARY)
 
 install: build
 	install -Dm755 $(BINARY) $(BINDIR)/$(BINARY)

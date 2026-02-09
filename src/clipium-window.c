@@ -214,8 +214,8 @@ on_overlay_click(GtkGestureClick *gesture,
         return;
     }
 
-    int card_w = gtk_widget_get_width(GTK_WIDGET(self->card_box));
-    int card_h = gtk_widget_get_height(GTK_WIDGET(self->card_box));
+    float card_w = (float)gtk_widget_get_width(GTK_WIDGET(self->card_box));
+    float card_h = (float)gtk_widget_get_height(GTK_WIDGET(self->card_box));
 
     if (card_point.x < 0 || card_point.y < 0 ||
         card_point.x > card_w || card_point.y > card_h) {
