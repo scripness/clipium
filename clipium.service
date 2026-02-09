@@ -1,0 +1,12 @@
+[Unit]
+Description=Clipium Clipboard Manager
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/clipium
+Restart=on-failure
+RestartSec=1
+
+[Install]
+WantedBy=graphical-session.target

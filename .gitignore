@@ -1,0 +1,4 @@
+clipium
+*.o
+*.d
+.cache/
