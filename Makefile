@@ -11,7 +11,7 @@ PREFIX = $(HOME)/.local
 BINDIR = $(PREFIX)/bin
 AUTOSTART_DIR = $(HOME)/.config/autostart
 
-.PHONY: build clean install uninstall keybinding debug test
+.PHONY: build clean install update uninstall keybinding debug test
 
 build: $(BINARY)
 
@@ -35,12 +35,18 @@ $(TEST_BINARY): $(TEST_SRCS) src/*.h
 clean:
 	rm -f $(BINARY) $(TEST_BINARY)
 
-install: build
+install: build keybinding
 	install -Dm755 $(BINARY) $(BINDIR)/$(BINARY)
 	strip $(BINDIR)/$(BINARY)
 	install -Dm644 clipium.desktop $(AUTOSTART_DIR)/clipium.desktop
-	@echo "Installed $(BINARY) to $(BINDIR)"
-	@echo "Run 'make keybinding' to set up Shift+Space shortcut"
+	-killall $(BINARY) 2>/dev/null; sleep 0.2
+	$(BINDIR)/$(BINARY) &
+	@echo ""
+	@echo "Clipium installed and running."
+
+update:
+	git pull
+	$(MAKE) install
 
 uninstall:
 	rm -f $(BINDIR)/$(BINARY)
